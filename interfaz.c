@@ -52,6 +52,9 @@ void visualizar_laberinto(int **matriz, int filas, int columnas) {
                     printf("%sᗤ%s", COLOR_CYAN, COLOR_RESET);
                     break;
 
+                case 6: 
+                    printf("%s[]%s", COLOR_CYAN, COLOR_RESET);
+                    break;
                 default:
                     printf("??");
                     break;
