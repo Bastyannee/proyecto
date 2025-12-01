@@ -1,7 +1,7 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h> 
-#include <SDL2/SDL_ttf.h> 
-#include <SDL2/SDL_mixer.h> 
+#include <SDL2/SDL.h> // Biblioteca base para la visualización (venatna)
+#include <SDL2/SDL_image.h>  // Biblioteca para las imagenes en la ventana
+#include <SDL2/SDL_ttf.h>  // Biblioteca para las fuentes en la ventana
+#include <SDL2/SDL_mixer.h>  // Bilioteca para reproducir sonidos
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h> 
@@ -9,24 +9,25 @@
 
 // Constantes globales
 #define TILE_SIZE 40
-#define ALTURA_LEYENDA 120
+#define ALTURA_LEYENDA 120 // Define el espacio en la parte inferior de la ventana dedicado al HUD (contadores de vida, controles)
 #define BALA_SIZE 8 
 
+// Punteros a los objetos principales de SDL (ventana y motor de dibujo)
 SDL_Window *ventana = NULL;
 SDL_Renderer *renderizador = NULL;
-TTF_Font *fuente = NULL;
+TTF_Font *fuente = NULL; // Punteros a las fuentes cargadas
 TTF_Font *fuente_mediana = NULL;
 TTF_Font *fuente_grande = NULL;
-SDL_Texture *textura_tanque_amarillo = NULL;
+SDL_Texture *textura_tanque_amarillo = NULL; // Punteros a las texturas de los tanques
 SDL_Texture *textura_tanque_verde = NULL;
+//Punteros a los archivos de sonido cargados
+Mix_Chunk *sonido_disparo = NULL;// sonido cada vez que se dispara
+Mix_Chunk *sonido_muro = NULL; // sonido cuando una bala le da a un muro solido
+Mix_Chunk *sonido_pared = NULL; // sonido cuando una bala le da a un muro destructible 
+Mix_Chunk *sonido_tanque_hit = NULL; // sonido cuando una bala le da a un tanque
+Mix_Chunk *sonido_final = NULL; // sonido cuando se termina el juego
 
-Mix_Chunk *sonido_disparo = NULL;
-Mix_Chunk *sonido_muro = NULL;
-Mix_Chunk *sonido_pared = NULL;
-Mix_Chunk *sonido_tanque_hit = NULL;
-Mix_Chunk *sonido_final = NULL; 
-
-// Funciones para crear ventana
+// Funciones para crear ventana (rectandulo con color RGB)
 void dibujar_rect(int x, int y, int w, int h, int r, int g, int b) {
     SDL_Rect rect = {x, y, w, h};
     SDL_SetRenderDrawColor(renderizador, r, g, b, 255);
@@ -48,7 +49,7 @@ void dibujar_texto(const char *texto, int x, int y, int r, int g, int b) {
     }
 }
 
-// Inicializa SDL con mensajes de depuración
+// Inicializa SDL y todos sus subsistemas (Audio, Fuentes, Imágenes)
 void abrir_ventana(int ancho, int alto) {
     printf("[DEBUG] Iniciando SDL...\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) { 
@@ -58,11 +59,13 @@ void abrir_ventana(int ancho, int alto) {
     printf("[DEBUG] Iniciando TTF/IMG/Mixer...\n");
     TTF_Init();
     IMG_Init(IMG_INIT_JPG | IMG_INIT_PNG);
-    
+
+    // Inicializa el sistema de audio
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
         printf("Error Audio: %s (El juego continuará sin sonido)\n", Mix_GetError());
     }
 
+    // Crea la ventana y la configura en pantalla completa de escritorio
     printf("[DEBUG] Creando Ventana...\n");
     ventana = SDL_CreateWindow("BATTLE CITY", 
                                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
