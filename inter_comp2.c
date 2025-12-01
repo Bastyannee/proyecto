@@ -7,9 +7,7 @@
 #include <stdbool.h> 
 #include <math.h>
 
-// ====================================================================
-// CONSTANTES Y GLOBALES 
-// ====================================================================
+// Constantes globales
 #define TILE_SIZE 40
 #define ALTURA_LEYENDA 120
 #define BALA_SIZE 8 
@@ -28,10 +26,7 @@ Mix_Chunk *sonido_pared = NULL;
 Mix_Chunk *sonido_tanque_hit = NULL;
 Mix_Chunk *sonido_final = NULL; 
 
-// ====================================================================
-// FUNCIONES DE DIBUJO
-// ====================================================================
-
+// Funciones para crear ventana
 void dibujar_rect(int x, int y, int w, int h, int r, int g, int b) {
     SDL_Rect rect = {x, y, w, h};
     SDL_SetRenderDrawColor(renderizador, r, g, b, 255);
@@ -53,7 +48,7 @@ void dibujar_texto(const char *texto, int x, int y, int r, int g, int b) {
     }
 }
 
-// Inicializa SDL CON MENSAJES DE DEPURACIÓN
+// Inicializa SDL con mensajes de depuración
 void abrir_ventana(int ancho, int alto) {
     printf("[DEBUG] Iniciando SDL...\n");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) { 
@@ -77,19 +72,17 @@ void abrir_ventana(int ancho, int alto) {
 
     renderizador = SDL_CreateRenderer(ventana, -1, SDL_RENDERER_ACCELERATED);
     SDL_RenderSetLogicalSize(renderizador, ancho, alto);
-    // Cargar Fuente
-    printf("[DEBUG] Cargando Fuente...\n");
-    fuente = TTF_OpenFont("arial.ttf", 6); 
     
-    // Fuente Título
-    fuente_grande = TTF_OpenFont("arial.ttf", 18); 
+    printf("[DEBUG] Cargando Fuente...\n"); // Carga la fuente 
+    fuente = TTF_OpenFont("arial.ttf", 6); // En tamaño 6
+    
+    fuente_grande = TTF_OpenFont("arial.ttf", 18);  // Fuente titulo
     if(!fuente_grande) fuente_grande = fuente; 
     
-    // Fuente Subtítulo
-    fuente_mediana = TTF_OpenFont("arial.ttf", 12);
+    fuente_mediana = TTF_OpenFont("arial.ttf", 12); // Fuente subtitulo
     if(!fuente_mediana) fuente_mediana = fuente;
     if (fuente == NULL) {
-        // Si falló, intentamos con Mayúscula (común al copiar desde Windows/Mac)
+        // Si falló, intentamos con mayúscula (común al copiar desde Windows/Mac)
         fuente = TTF_OpenFont("Arial.ttf", 16);
     }
 
@@ -97,8 +90,7 @@ void abrir_ventana(int ancho, int alto) {
         fprintf(stderr, "ADVERTENCIA: No se encontró fuente (arial.ttf ni Arial.ttf). Texto no visible: %s\n", TTF_GetError());
     }
 
-    
-    // Cargar Imágenes
+    // Cargar imágenes 
     printf("[DEBUG] Cargando Imágenes...\n");
     SDL_Surface *s = IMG_Load("tanque_amarillo.png");
     if (s) { textura_tanque_amarillo = SDL_CreateTextureFromSurface(renderizador, s); SDL_FreeSurface(s); }
@@ -108,7 +100,7 @@ void abrir_ventana(int ancho, int alto) {
     if (s) { textura_tanque_verde = SDL_CreateTextureFromSurface(renderizador, s); SDL_FreeSurface(s); }
     else printf("Error tanque verde: %s\n", IMG_GetError());
 
-    // Cargar Sonidos
+    // Cargar sonidos
     printf("[DEBUG] Cargando Sonidos...\n");
     sonido_disparo = Mix_LoadWAV("disparo.wav"); 
     sonido_muro = Mix_LoadWAV("muro.wav");
@@ -161,23 +153,21 @@ void dibujar_texto_centrado(TTF_Font *font, const char *texto, int centro_x, int
         SDL_FreeSurface(surf);
     }
 }
-// ====================================================================
-// FUNCIÓN PRINCIPAL DE ENLACE
-// ====================================================================
+// Función principal de enlace
 void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2, int dir1, int dir2, int winner) {
     
-    // 1. Inicialización segura
+    // Inicialización segura
     if (ventana == NULL) {
         abrir_ventana(columnas * TILE_SIZE, filas * TILE_SIZE + ALTURA_LEYENDA);
     }
     
     int ancho_total = columnas * TILE_SIZE; 
 
-    // 2. Limpiar Pantalla
+    // Limpiar Pantalla
     SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
     SDL_RenderClear(renderizador);
 
-    // 3. Dibujar Mapa
+    // Dibujar Mapa
     for (int i = 0; i < filas; i++) {
         for (int j = 0; j < columnas; j++) {
             int x = j * TILE_SIZE;
@@ -194,13 +184,11 @@ void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2,
                     dibujar_rect(x + 10, y + 10, TILE_SIZE - 20, TILE_SIZE - 20, 0, 255, 255); 
                     dibujar_rect(x + 12, y + 12, TILE_SIZE - 24, TILE_SIZE - 24, 0, 0, 0);
                     break;
-            }
+            
         }
     }
-
-   // ------------------------------------------------------------
-    // 4. DIBUJAR HUD
-    // ------------------------------------------------------------
+    
+    // Dibujar HUD
     int y_hud = filas * TILE_SIZE;
     
     // Fondo gris oscuro
@@ -208,61 +196,50 @@ void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2,
     SDL_Rect fondo_hud = {0, y_hud, ancho_total, ALTURA_LEYENDA};
     SDL_RenderFillRect(renderizador, &fondo_hud);
     
-    // CONFIGURACIÓN DE FILAS (Espaciado vertical)
+    // Configuración de filas (espaciado vertical) 
     int margen_sup = 15;
     int y_fila1 = y_hud + margen_sup;
     int y_fila2 = y_hud + margen_sup + 35;
     int y_fila3 = y_hud + margen_sup + 70;
 
-    // COLUMNAS (Solo Izquierda y Derecha)
+    // Columnas (solo izquierda y derecha)
     int x_col1 = 30;                 // Izquierda (Leyenda)
     int x_col3 = ancho_total - 140;  // Derecha (Tanques)
     
-    // TAMAÑO PARA ICONOS DE LEYENDA (20x20)
+    // Tamaño para los iconos de la leyenda (20x20)
     int mini_size = 20;
 
-    // =========================================================
-    // FILA 1: LADRILLO (Izq) | TANQUE P1 (Der)
-    // =========================================================
-    
-    // 1. Icono Ladrillo (Miniatura)
+    // Fila 1: ladrillo (Izq) | TANQUE P1 (Der)
+    // Icono ladrillo (miniatura)
     dibujar_rect(x_col1, y_fila1, mini_size, mini_size, 184, 100, 56);
     dibujar_rect(x_col1+1, y_fila1+1, mini_size/2-2, mini_size/2-2, 216, 132, 88);
     dibujar_rect(x_col1+mini_size/2+1, y_fila1+mini_size/2+1, mini_size/2-2, mini_size/2-2, 216, 132, 88);
     
     dibujar_texto("Muro", x_col1 + 30, y_fila1 + 4, 180, 180, 180);
 
-    // 2. Tanque P1 + Vidas
+    // Tanque P1 + Vidas
     SDL_Rect rect_p1 = {x_col3, y_fila1 - 5, 30, 30}; 
     SDL_RenderCopyEx(renderizador, textura_tanque_amarillo, NULL, &rect_p1, 0, NULL, SDL_FLIP_NONE);
     
     char txt_p1[20]; sprintf(txt_p1, "x %d", v1);
     dibujar_texto(txt_p1, x_col3 + 40, y_fila1 + 4, 255, 255, 0);
-
-
-    // =========================================================
+        
     // FILA 2: ACERO (Izq) | TANQUE P2 (Der)
-    // =========================================================
-    
-    // 1. Icono Acero (Miniatura)
+    // Icono Acero (Miniatura)
     dibujar_rect(x_col1, y_fila2, mini_size, mini_size, 160, 160, 160);
-    dibujar_rect(x_col1+4, y_fila2+4, mini_size-8, mini_size-8, 200, 200, 200);
-    
+    dibujar_rect(x_col1+4, y_fila2+4, mini_size-8, mini_size-8, 200, 200, 200); 
     dibujar_texto("Acero", x_col1 + 30, y_fila2 + 4, 180, 180, 180);
 
-    // 2. Tanque P2 + Vidas
+    // Tanque P2 + Vidas
     SDL_Rect rect_p2 = {x_col3, y_fila2 - 5, 30, 30}; 
     SDL_RenderCopyEx(renderizador, textura_tanque_verde, NULL, &rect_p2, 0, NULL, SDL_FLIP_NONE);
     
     char txt_p2[20]; sprintf(txt_p2, "x %d", v2);
     dibujar_texto(txt_p2, x_col3 + 40, y_fila2 + 4, 50, 255, 50);
-
-
-    // =========================================================
+        
     // FILA 3: ESCUDO/BASE (Izq)
-    // =========================================================
 
-    // 1. Icono Base (Miniatura)
+    // Icono base (Miniatura)
     dibujar_rect(x_col1, y_fila3, mini_size, mini_size, 0, 255, 255); 
     dibujar_rect(x_col1+3, y_fila3+3, mini_size-6, mini_size-6, 0, 0, 0); 
     
@@ -270,7 +247,7 @@ void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2,
     
     dibujar_texto("[Q] Salir", (ancho_total/2)-20, y_fila3 + 4, 80, 80, 80);
 
-    // 5. GAME OVER OVERLAY
+    // GAME OVER OVERLAY
     if (winner != 0) {
         // Fondo oscuro
         SDL_SetRenderDrawBlendMode(renderizador, SDL_BLENDMODE_BLEND);
@@ -282,16 +259,16 @@ void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2,
         int cx = ancho_total / 2;     
         int cy = (filas * TILE_SIZE) / 2; 
 
-        // 1. TÍTULO (Más arriba)
+        // Titulo (Más arriba)
         dibujar_texto_centrado(fuente_grande, "FIN DEL JUEGO", cx, cy - 80, 255, 0, 0);
 
-        // 2. GANADOR
+        // Ganador
         char vic_msg[50];
         if (winner == 1) sprintf(vic_msg, "GANADOR: JUGADOR 1");
         else sprintf(vic_msg, "GANADOR: JUGADOR 2");
         dibujar_texto_centrado(fuente_mediana, vic_msg, cx, cy - 40, 255, 255, 255);
 
-        // 3. ESTADÍSTICAS (Apiladas verticalmente para que quepan)
+        // Estadisticas (apiladas verticalmente para que quepan)
         char p1_msg[50];
         char p2_msg[50];
         sprintf(p1_msg, "P1 (Amarillo): %d Vidas", v1);
@@ -302,7 +279,7 @@ void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2,
         // P2 (Debajo de P1)
         dibujar_texto_centrado(fuente, p2_msg, cx, cy + 30, 0, 255, 0);   // Verde
 
-        // 4. INSTRUCCIONES (Textos más cortos y separados)
+        // Instrucciones (Textos más cortos y separados)
         dibujar_texto_centrado(fuente, "[ ESPACIO ]: Reiniciar", cx, cy + 70, 200, 200, 200);
         dibujar_texto_centrado(fuente, "[ Q ]: Salir del Juego", cx, cy + 90, 200, 200, 200);
     }
