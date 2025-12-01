@@ -1,41 +1,24 @@
-#include <SDL.h>
-#include <SDL_image.h> 
-#include <SDL_ttf.h> 
-#include <SDL_mixer.h> 
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h> 
+#include <SDL2/SDL_ttf.h> 
+#include <SDL2/SDL_mixer.h> 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h> 
-#include <string.h> 
 #include <math.h>
-#include <unistd.h> 
-#include <time.h>
 
 // ====================================================================
-// CONSTANTES GLOBALES Y ESTRUCTURAS
+// CONSTANTES Y GLOBALES 
 // ====================================================================
 #define TILE_SIZE 40
-#define ALTURA_LEYENDA 100 
-#define MAX_BALAS 10 
-#define MOV_COOLDOWN_P1 5    // Cooldown ajustado para P1 (Movimiento continuo más rápido)
-#define MOV_COOLDOWN_P2 15   // Cooldown para P2 (Movimiento continuo normal)
-#define COOLDOWN_DISPARO 25 
+#define ALTURA_LEYENDA 120
 #define BALA_SIZE 8 
 
-// Estructura para una bala
-typedef struct {
-    int fila;
-    int col;
-    int direccion;
-    int activa;
-    int propietario; // 1 = Amarillo, 2 = Verde
-    float x_f; 
-    float y_f;
-} Bala;
-
-// Variables globales SDL y Recursos
 SDL_Window *ventana = NULL;
 SDL_Renderer *renderizador = NULL;
 TTF_Font *fuente = NULL;
+TTF_Font *fuente_mediana = NULL;
+TTF_Font *fuente_grande = NULL;
 SDL_Texture *textura_tanque_amarillo = NULL;
 SDL_Texture *textura_tanque_verde = NULL;
 
@@ -45,121 +28,10 @@ Mix_Chunk *sonido_pared = NULL;
 Mix_Chunk *sonido_tanque_hit = NULL;
 Mix_Chunk *sonido_final = NULL; 
 
-// Variables de Estado del Juego (Globales para que el main y la lógica las usen)
-int tanque1_fila = 1, tanque1_col = 1, tanque1_direccion = 0, tanque1_vidas = 3;
-int tanque2_fila = 13, tanque2_col = 18, tanque2_direccion = 0, tanque2_vidas = 3;
-
-// ESTADO DE MOVIMIENTO CONTINUO
-int tanque1_is_moving = 0; // 0=parado, 1=moviendo
-int tanque1_last_direction = 0; // Dirección deseada por P1
-int tanque2_is_moving = 0; 
-int tanque2_last_direction = 0; 
-
-int t1_ultimo_mov = 0; // Cooldown para P1
-int t2_ultimo_mov = 0; 
-int t1_ultimo_disparo = 0; 
-int t2_ultimo_disparo = 0; 
-bool game_over = false; 
-int winner = 0; 
-
 // ====================================================================
-// PROTOTIPOS
-// ====================================================================
-void abrir_ventana(int ancho, int alto);
-void cerrar_ventana();
-void dibujar_rect(int x, int y, int w, int h, int r, int g, int b);
-void dibujar_texto(const char *texto, int x, int y, int r, int g, int b);
-void dibujar_muro_destruible(int x, int y);
-void dibujar_muro_solido(int x, int y);
-void dibujar_tanque_con_textura(SDL_Texture *textura, int x, int y, int direccion);
-void dibujar_bala(float x_f, float y_f);
-void dibujar_mapa(int **matriz, int filas, int columnas, int tanque1_dir, int tanque2_dir, Bala *balas, int num_balas, int t1_vidas, int t2_vidas, bool game_over, int winner);
-
-void actualizar_balas(Bala *balas, int num_balas, int **mapa, int filas, int columnas, int *t1_fila, int *t1_col, int *t2_fila, int *t2_col, int *t1_vidas, int *t2_vidas, bool *game_over, int *winner);
-void disparar_bala(Bala *balas, int num_balas, int fila_tanque, int col_tanque, int direccion, int propietario);
-int obtener_indice_bala_libre(Bala *balas, int num_balas);
-void reset_game(int **mapa, int filas, int columnas, Bala *balas, int num_balas);
-
-// ====================================================================
-// BLOQUE I: INTERFAZ GRÁFICA (IMPLEMENTACIONES)
+// FUNCIONES DE DIBUJO
 // ====================================================================
 
-// --- Funciones de Inicialización y Cierre de SDL ---
-void abrir_ventana(int ancho, int alto) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) { 
-        fprintf(stderr, "SDL no pudo inicializarse. Error: %s\n", SDL_GetError());
-        exit(1);
-    }
-    if (TTF_Init() == -1) {
-        fprintf(stderr, "SDL_ttf no pudo inicializarse. Error: %s\n", TTF_GetError());
-        exit(1);
-    }
-    if (!(IMG_Init(IMG_INIT_JPG | IMG_INIT_PNG) & (IMG_INIT_JPG | IMG_INIT_PNG))) {
-        fprintf(stderr, "SDL_Image no pudo inicializarse. Error: %s\n", IMG_GetError());
-    }
-
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        fprintf(stderr, "ADVERTENCIA: SDL_mixer no pudo inicializarse. El juego continuará sin sonido: %s\n", Mix_GetError());
-    } else {
-        sonido_disparo = Mix_LoadWAV("disparo.wav"); 
-        sonido_muro = Mix_LoadWAV("muro.wav");
-        sonido_pared = Mix_LoadWAV("pared.wav"); 
-        sonido_tanque_hit = Mix_LoadWAV("tanque.wav"); 
-        sonido_final = Mix_LoadWAV("final.wav");
-    }
-    
-    ventana = SDL_CreateWindow(
-        "BATTLE CITY - P1(Amarillo):FLECHAS | P2(Verde):WASD",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        ancho,
-        alto,
-        SDL_WINDOW_SHOWN
-    );
-    
-    renderizador = SDL_CreateRenderer(ventana, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-
-    fuente = TTF_OpenFont("arial.ttf", 16);
-    if (fuente == NULL) {
-        fprintf(stderr, "ADVERTENCIA: Error al cargar fuente (arial.ttf). Los contadores no se mostrarán: %s\n", TTF_GetError());
-    }
-
-    SDL_Surface *superficie_temp = NULL;
-
-    superficie_temp = IMG_Load("tanque_amarillo.png");
-    if (superficie_temp) {
-        textura_tanque_amarillo = SDL_CreateTextureFromSurface(renderizador, superficie_temp);
-        SDL_FreeSurface(superficie_temp);
-    } 
-
-    superficie_temp = IMG_Load("tanque_verde.png");
-    if (superficie_temp) {
-        textura_tanque_verde = SDL_CreateTextureFromSurface(renderizador, superficie_temp);
-        SDL_FreeSurface(superficie_temp);
-    }
-}
-
-void cerrar_ventana() {
-    if (sonido_disparo) Mix_FreeChunk(sonido_disparo);
-    if (sonido_muro) Mix_FreeChunk(sonido_muro);
-    if (sonido_pared) Mix_FreeChunk(sonido_pared);
-    if (sonido_tanque_hit) Mix_FreeChunk(sonido_tanque_hit);
-    if (sonido_final) Mix_FreeChunk(sonido_final);
-
-    Mix_CloseAudio(); 
-    
-    if (textura_tanque_amarillo) SDL_DestroyTexture(textura_tanque_amarillo);
-    if (textura_tanque_verde) SDL_DestroyTexture(textura_tanque_verde);
-    if (fuente) TTF_CloseFont(fuente);
-    if (renderizador) SDL_DestroyRenderer(renderizador);
-    if (ventana) SDL_DestroyWindow(ventana);
-    
-    IMG_Quit(); 
-    TTF_Quit(); 
-    SDL_Quit();
-}
-
-// --- Funciones Primitivas y Dibujo ---
 void dibujar_rect(int x, int y, int w, int h, int r, int g, int b) {
     SDL_Rect rect = {x, y, w, h};
     SDL_SetRenderDrawColor(renderizador, r, g, b, 255);
@@ -169,7 +41,9 @@ void dibujar_rect(int x, int y, int w, int h, int r, int g, int b) {
 void dibujar_texto(const char *texto, int x, int y, int r, int g, int b) {
     if (!fuente) return;
     SDL_Color color = {r, g, b, 255};
-    SDL_Surface *superficie_texto = TTF_RenderText_Solid(fuente, texto, color);
+
+    SDL_Surface *superficie_texto = TTF_RenderText_Blended(fuente, texto, color);
+    
     if (superficie_texto) {
         SDL_Texture *textura_texto = SDL_CreateTextureFromSurface(renderizador, superficie_texto);
         SDL_Rect destino = {x, y, superficie_texto->w, superficie_texto->h};
@@ -179,373 +53,270 @@ void dibujar_texto(const char *texto, int x, int y, int r, int g, int b) {
     }
 }
 
-void dibujar_muro_destruible(int x, int y) {
-    int size = TILE_SIZE;
-    int brick_w = size / 4;
-    int brick_h = size / 4;
-    
-    int color_base_r = 184; int color_base_g = 100; int color_base_b = 56;
-    int color_claro_r = 216; int color_claro_g = 132; int color_claro_b = 88;
-    
-    dibujar_rect(x, y, size, size, color_base_r, color_base_g, color_base_b);
-    
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            int bx = x + j * brick_w;
-            int by = y + i * brick_h;
-            
-            if (i % 2 == 1) {
-                bx += brick_w / 2;
-            }
-            
-            if (bx < x + size - brick_w/2) {
-                dibujar_rect(bx + 1, by + 1, brick_w - 2, brick_h - 2, 
-                             color_claro_r, color_claro_g, color_claro_b);
-            }
-        }
+// Inicializa SDL CON MENSAJES DE DEPURACIÓN
+void abrir_ventana(int ancho, int alto) {
+    printf("[DEBUG] Iniciando SDL...\n");
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) { 
+        printf("SDL Error: %s\n", SDL_GetError()); exit(1);
     }
+    
+    printf("[DEBUG] Iniciando TTF/IMG/Mixer...\n");
+    TTF_Init();
+    IMG_Init(IMG_INIT_JPG | IMG_INIT_PNG);
+    
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        printf("Error Audio: %s (El juego continuará sin sonido)\n", Mix_GetError());
+    }
+
+    printf("[DEBUG] Creando Ventana...\n");
+    ventana = SDL_CreateWindow("BATTLE CITY", 
+                               SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
+                               ancho, alto, 
+                               SDL_WINDOW_FULLSCREEN_DESKTOP);
+    if (!ventana) { printf("Error Ventana: %s\n", SDL_GetError()); exit(1); }
+
+    renderizador = SDL_CreateRenderer(ventana, -1, SDL_RENDERER_ACCELERATED);
+    SDL_RenderSetLogicalSize(renderizador, ancho, alto);
+    // Cargar Fuente
+    printf("[DEBUG] Cargando Fuente...\n");
+    fuente = TTF_OpenFont("arial.ttf", 6); 
+    
+    // Fuente Título
+    fuente_grande = TTF_OpenFont("arial.ttf", 18); 
+    if(!fuente_grande) fuente_grande = fuente; 
+    
+    // Fuente Subtítulo
+    fuente_mediana = TTF_OpenFont("arial.ttf", 12);
+    if(!fuente_mediana) fuente_mediana = fuente;
+    if (fuente == NULL) {
+        // Si falló, intentamos con Mayúscula (común al copiar desde Windows/Mac)
+        fuente = TTF_OpenFont("Arial.ttf", 16);
+    }
+
+    if (fuente == NULL) {
+        fprintf(stderr, "ADVERTENCIA: No se encontró fuente (arial.ttf ni Arial.ttf). Texto no visible: %s\n", TTF_GetError());
+    }
+
+    
+    // Cargar Imágenes
+    printf("[DEBUG] Cargando Imágenes...\n");
+    SDL_Surface *s = IMG_Load("tanque_amarillo.png");
+    if (s) { textura_tanque_amarillo = SDL_CreateTextureFromSurface(renderizador, s); SDL_FreeSurface(s); }
+    else printf("Error tanque amarillo: %s\n", IMG_GetError());
+    
+    s = IMG_Load("tanque_verde.png");
+    if (s) { textura_tanque_verde = SDL_CreateTextureFromSurface(renderizador, s); SDL_FreeSurface(s); }
+    else printf("Error tanque verde: %s\n", IMG_GetError());
+
+    // Cargar Sonidos
+    printf("[DEBUG] Cargando Sonidos...\n");
+    sonido_disparo = Mix_LoadWAV("disparo.wav"); 
+    sonido_muro = Mix_LoadWAV("muro.wav");
+    sonido_pared = Mix_LoadWAV("pared.wav"); 
+    sonido_tanque_hit = Mix_LoadWAV("tanque.wav"); 
+    sonido_final = Mix_LoadWAV("final.wav");
+    
+    printf("[DEBUG] Inicialización Completa.\n");
+}
+
+// Dibujo de elementos
+void dibujar_muro_destruible(int x, int y) {
+    dibujar_rect(x, y, TILE_SIZE, TILE_SIZE, 184, 100, 56); 
+    dibujar_rect(x+2, y+2, TILE_SIZE/2-4, TILE_SIZE/2-4, 216, 132, 88); 
+    dibujar_rect(x+TILE_SIZE/2+2, y+TILE_SIZE/2+2, TILE_SIZE/2-4, TILE_SIZE/2-4, 216, 132, 88);
 }
 void dibujar_muro_solido(int x, int y) { 
-    int size = TILE_SIZE;
-    int gris_base = 160;
-    int gris_claro = 200;
-    
-    dibujar_rect(x, y, size, size, gris_base, gris_base, gris_base);
-    
-    int block_size = size / 2;
-    
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            int bx = x + j * block_size;
-            int by = y + i * block_size;
-            
-            dibujar_rect(bx + 2, by + 2, block_size - 4, block_size - 4, 
-                         gris_claro, gris_claro, gris_claro);
-        }
-    }
+    dibujar_rect(x, y, TILE_SIZE, TILE_SIZE, 160, 160, 160); 
+    dibujar_rect(x+5, y+5, TILE_SIZE-10, TILE_SIZE-10, 200, 200, 200); 
 }
-
-void dibujar_bala(float x_f, float y_f) {
-    int tx = (int)(x_f * TILE_SIZE - (float)BALA_SIZE/2.0f); 
-    int ty = (int)(y_f * TILE_SIZE - (float)BALA_SIZE/2.0f);
-    
-    dibujar_rect(tx, ty, BALA_SIZE, BALA_SIZE, 255, 255, 255);
-    dibujar_rect(tx + 2, ty + 2, BALA_SIZE - 4, BALA_SIZE - 4, 255, 255, 0);
+void dibujar_bala(int x, int y) {
+    int centro_x = x + TILE_SIZE/2 - BALA_SIZE/2;
+    int centro_y = y + TILE_SIZE/2 - BALA_SIZE/2;
+    dibujar_rect(centro_x, centro_y, BALA_SIZE, BALA_SIZE, 255, 255, 255);
 }
-
-void dibujar_tanque_con_textura(SDL_Texture *textura, int x, int y, int direccion) {
-    if (textura == NULL) {
-        // Fallback si la textura no carga
-        dibujar_rect(x, y, TILE_SIZE, TILE_SIZE, 128, 128, 128); // Gris oscuro
-        return;
-    }
-
-    SDL_Rect destino = {x, y, TILE_SIZE, TILE_SIZE};
-    
-    double angulo = 0.0;
-    if (direccion == 0) angulo = 0.0;
-    else if (direccion == 1) angulo = 90.0;
-    else if (direccion == 2) angulo = 180.0;
-    else if (direccion == 3) angulo = 270.0;
-    
-    SDL_RenderCopyEx(renderizador, textura, NULL, &destino, angulo, NULL, SDL_FLIP_NONE);
-}
-
-// ====================================================================
-// BLOQUE II: LÓGICA (Funciones internas del juego)
-// ====================================================================
-
-int obtener_indice_bala_libre(Bala *balas, int num_balas) {
-    for (int i = 0; i < num_balas; i++) {
-        if (!balas[i].activa) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-void disparar_bala(Bala *balas, int num_balas, int fila_tanque, int col_tanque, int direccion, int propietario) {
-    int i = obtener_indice_bala_libre(balas, num_balas);
-    if (i != -1) {
-        balas[i].activa = 1;
-        balas[i].direccion = direccion;
-        balas[i].propietario = propietario;
-
-        // Ajuste inicial para que la bala salga del "cañón" del tanque
-        balas[i].y_f = (float)fila_tanque + 0.5f;
-        balas[i].x_f = (float)col_tanque + 0.5f;
+void dibujar_tanque_con_textura(SDL_Texture *textura, int x, int y, int dir) {
+    if (textura) {
+        SDL_Rect destino = {x, y, TILE_SIZE, TILE_SIZE};
+        double angulo = 0.0;
+        // Asumiendo enum {UP=0, DOWN=1, LEFT=2, RIGHT=3}
+        if(dir == 1) angulo = 180.0; 
+        else if(dir == 2) angulo = 270.0;
+        else if(dir == 3) angulo = 90.0;
         
-        if (direccion == 0) balas[i].y_f -= 0.6f; // Arriba
-        else if (direccion == 2) balas[i].y_f += 0.6f; // Abajo
-        else if (direccion == 3) balas[i].x_f -= 0.6f; // Izquierda
-        else if (direccion == 1) balas[i].x_f += 0.6f; // Derecha
-
-        if (sonido_disparo) {
-            Mix_PlayChannel(-1, sonido_disparo, 0); 
-        }
+        SDL_RenderCopyEx(renderizador, textura, NULL, &destino, angulo, NULL, SDL_FLIP_NONE);
+    } else {
+        dibujar_rect(x, y, TILE_SIZE, TILE_SIZE, 0, 255, 0); 
     }
 }
-
-void actualizar_balas(Bala *balas, int num_balas, int **mapa, int filas, int columnas, int *t1_fila, int *t1_col, int *t2_fila, int *t2_col, int *t1_vidas, int *t2_vidas, bool *game_over, int *winner) {
-    float velocidad = 0.25f;
-
-    for (int i = 0; i < num_balas; i++) {
-        if (balas[i].activa) {
-            
-            if (balas[i].direccion == 0) balas[i].y_f -= velocidad;
-            else if (balas[i].direccion == 1) balas[i].x_f += velocidad;
-            else if (balas[i].direccion == 2) balas[i].y_f += velocidad;
-            else if (balas[i].direccion == 3) balas[i].x_f -= velocidad;
-
-            int px = (int)(balas[i].x_f * TILE_SIZE - (float)BALA_SIZE/2.0f);
-            int py = (int)(balas[i].y_f * TILE_SIZE - (float)BALA_SIZE/2.0f);
-            
-            SDL_Rect bala_rect = {px, py, BALA_SIZE, BALA_SIZE};
-
-            int min_fila = (int)(balas[i].y_f - 1.0f);
-            int max_fila = (int)(balas[i].y_f + 1.0f);
-            int min_col = (int)(balas[i].x_f - 1.0f);
-            int max_col = (int)(balas[i].x_f + 1.0f);
-
-            if (min_fila < 0) min_fila = 0;
-            if (max_fila >= filas) max_fila = filas - 1;
-            if (min_col < 0) min_col = 0;
-            if (max_col >= columnas) max_col = columnas - 1;
-
-            // Colisión con el Mapa
-            for (int r = min_fila; r <= max_fila; r++) {
-                for (int c = min_col; c <= max_col; c++) {
-                    int destino = mapa[r][c];
-
-                    if (destino == 1 || destino == 2) { 
-                        SDL_Rect muro_rect = {c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE};
-
-                        if (SDL_HasIntersection(&bala_rect, &muro_rect)) 
-                        {
-                            balas[i].activa = 0;
-                            
-                            if (destino == 1) { // MURO DESTRUIBLE (PARED.WAV)
-                                mapa[r][c] = 0; 
-                                if (sonido_pared) Mix_PlayChannel(-1, sonido_pared, 0); 
-                            } else { // MURO SÓLIDO (MURO.WAV)
-                                if (sonido_muro) Mix_PlayChannel(-1, sonido_muro, 0); 
-                            }
-                            goto next_bullet; 
-                        }
-                    }
-                }
-            }
-            
-            // Colisión con Tanques
-            if (balas[i].propietario != 1 && *t1_vidas > 0) {
-                SDL_Rect t1_rect = {*t1_col * TILE_SIZE, *t1_fila * TILE_SIZE, TILE_SIZE, TILE_SIZE};
-                
-                if (SDL_HasIntersection(&bala_rect, &t1_rect)) 
-                {
-                    balas[i].activa = 0;
-                    if (*t1_vidas > 0) {
-                        (*t1_vidas)--;
-                        if (*t1_vidas > 0) {
-                            mapa[*t1_fila][*t1_col] = 0; *t1_fila = 1; *t1_col = 1; mapa[*t1_fila][*t1_col] = 3; 
-                            if (sonido_tanque_hit) Mix_PlayChannel(-1, sonido_tanque_hit, 0); 
-                        } else {
-                            mapa[*t1_fila][*t1_col] = 0; *game_over = true; *winner = 2; 
-                            if (sonido_final) Mix_PlayChannel(-1, sonido_final, 0); 
-                        }
-                    }
-                    goto next_bullet;
-                }
-            }
-            if (balas[i].propietario != 2 && *t2_vidas > 0) {
-                 SDL_Rect t2_rect = {*t2_col * TILE_SIZE, *t2_fila * TILE_SIZE, TILE_SIZE, TILE_SIZE};
-
-                if (SDL_HasIntersection(&bala_rect, &t2_rect))
-                {
-                    balas[i].activa = 0;
-                    if (*t2_vidas > 0) {
-                        (*t2_vidas)--;
-                        if (*t2_vidas > 0) {
-                            mapa[*t2_fila][*t2_col] = 0; *t2_fila = filas - 2; *t2_col = columnas - 2; mapa[*t2_fila][*t2_col] = 4;
-                            if (sonido_tanque_hit) Mix_PlayChannel(-1, sonido_tanque_hit, 0); 
-                        } else {
-                            mapa[*t2_fila][*t2_col] = 0; *game_over = true; *winner = 1; 
-                            if (sonido_final) Mix_PlayChannel(-1, sonido_final, 0); 
-                        }
-                    }
-                    goto next_bullet;
-                }
-            }
-            
-            // 4. Chequear límites de pantalla
-            if (px < 0 || px + BALA_SIZE > columnas * TILE_SIZE ||
-                py < 0 || py + BALA_SIZE > filas * TILE_SIZE) {
-                balas[i].activa = 0;
-            }
-            
-            next_bullet:; 
-        }
+void dibujar_texto_centrado(TTF_Font *font, const char *texto, int centro_x, int y, int r, int g, int b) {
+    if (!font) return;
+    SDL_Color color = {r, g, b, 255};
+    SDL_Surface *surf = TTF_RenderText_Blended(font, texto, color);
+    if (surf) {
+        SDL_Texture *tex = SDL_CreateTextureFromSurface(renderizador, surf);
+        // Calculamos la X para que quede centrado: Centro - (Ancho / 2)
+        SDL_Rect dest = {centro_x - (surf->w / 2), y, surf->w, surf->h};
+        SDL_RenderCopy(renderizador, tex, NULL, &dest);
+        SDL_DestroyTexture(tex);
+        SDL_FreeSurface(surf);
     }
 }
-
-void reset_game(int **mapa, int filas, int columnas, Bala *balas, int num_balas) {
-    // 1. Resetear el mapa a la configuración inicial (solo muros, sin tanques)
-    for (int i = 0; i < filas; i++) {
-        for (int j = 0; j < columnas; j++) {
-            // Limpiamos posiciones de tanques y suelo
-            if (mapa[i][j] == 3 || mapa[i][j] == 4 || mapa[i][j] == 0) {
-                mapa[i][j] = 0; 
-            }
-        }
+// ====================================================================
+// FUNCIÓN PRINCIPAL DE ENLACE
+// ====================================================================
+void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2, int dir1, int dir2, int winner) {
+    
+    // 1. Inicialización segura
+    if (ventana == NULL) {
+        abrir_ventana(columnas * TILE_SIZE, filas * TILE_SIZE + ALTURA_LEYENDA);
     }
-    
-    // 2. Resetear variables de estado
-    tanque1_fila = 1; tanque1_col = 1; tanque1_direccion = 0; tanque1_vidas = 3;
-    tanque2_fila = filas - 2; tanque2_col = columnas - 2; tanque2_direccion = 0; tanque2_vidas = 3;
-    
-    tanque1_is_moving = 0;
-    tanque1_last_direction = 0;
-    tanque2_is_moving = 0;
-    tanque2_last_direction = 0;
-
-    t1_ultimo_mov = 0; 
-    t2_ultimo_mov = 0;
-    t1_ultimo_disparo = 0;
-    t2_ultimo_disparo = 0;
-    
-    // 3. Colocar tanques en el mapa
-    mapa[tanque1_fila][tanque1_col] = 3;
-    mapa[tanque2_fila][tanque2_col] = 4;
-    
-    // 4. Desactivar todas las balas
-    for (int i = 0; i < num_balas; i++) {
-        balas[i].activa = 0;
-    }
-    
-    // 5. Resetear estado del juego
-    game_over = false;
-    winner = 0;
-    printf("--- JUEGO REINICIADO ---\n");
-}
-
-
-// FUNCIÓN PRINCIPAL DE DIBUJO (CON LAYOUT CORREGIDO)
-void dibujar_mapa(int **matriz, int filas, int columnas, int tanque1_dir, int tanque2_dir, Bala *balas, int num_balas, int t1_vidas, int t2_vidas, bool game_over, int winner) {
     
     int ancho_total = columnas * TILE_SIZE; 
-    
+
+    // 2. Limpiar Pantalla
     SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 255);
     SDL_RenderClear(renderizador);
-    
-    // Dibujar el mapa (muros y tanques en su posición de baldosa)
+
+    // 3. Dibujar Mapa
     for (int i = 0; i < filas; i++) {
         for (int j = 0; j < columnas; j++) {
             int x = j * TILE_SIZE;
             int y = i * TILE_SIZE;
-            int que_hay = matriz[i][j];
-            
-            if (que_hay == 1) {
-                dibujar_muro_destruible(x, y);
-            }
-            else if (que_hay == 2) {
-                dibujar_muro_solido(x, y);
-            }
-            else if (que_hay == 3 && t1_vidas > 0) { 
-                dibujar_tanque_con_textura(textura_tanque_amarillo, x, y, tanque1_dir);
-            }
-            else if (que_hay == 4 && t2_vidas > 0) { 
-                dibujar_tanque_con_textura(textura_tanque_verde, x, y, tanque2_dir);
+            int valor = matriz[i][j];
+
+            switch(valor) {
+                case 1: dibujar_muro_destruible(x, y); break;
+                case 2: dibujar_muro_solido(x, y); break;
+                case 3: dibujar_tanque_con_textura(textura_tanque_amarillo, x, y, dir1); break; 
+                case 4: dibujar_tanque_con_textura(textura_tanque_verde, x, y, dir2); break;    
+                case 5: dibujar_bala(x, y); break;
+                case 6: // DIBUJAR ESCUDO
+                    dibujar_rect(x + 10, y + 10, TILE_SIZE - 20, TILE_SIZE - 20, 0, 255, 255); 
+                    dibujar_rect(x + 12, y + 12, TILE_SIZE - 24, TILE_SIZE - 24, 0, 0, 0);
+                    break;
             }
         }
     }
-    
-    // Dibujar balas activas
-    for (int i = 0; i < num_balas; i++) {
-        if (balas[i].activa) {
-            dibujar_bala(balas[i].x_f, balas[i].y_f);
-        }
-    }
-    
-    // 2. Dibujar HUD y Leyenda (DISEÑO MEJORADO)
-    int y_leyenda_base = filas * TILE_SIZE;
-    
-    // Fondo de la leyenda
-    SDL_SetRenderDrawColor(renderizador, 30, 30, 30, 255);
-    SDL_Rect fondo_leyenda = {0, y_leyenda_base, ancho_total, ALTURA_LEYENDA};
-    SDL_RenderFillRect(renderizador, &fondo_leyenda);
-    
-    // POSICIONES CLAVE (Ajustadas para la mejor legibilidad en un ancho estándar)
-    int x_p1_start = 20; 
-    int x_p2_start = ancho_total - 380; 
-    
-    // --- FILA 1: INFORMACIÓN DE RECURSOS ---
-    int y_fila1 = y_leyenda_base + 5;
-    int y_salto_muros = y_fila1 + 18; 
-    
-    // Muro Destruible
-    dibujar_rect(x_p1_start, y_fila1, 20, 20, 216, 132, 88); 
-    dibujar_texto("Pared", x_p1_start + 25, y_fila1 + 2, 255, 255, 255);
 
-    // Muro Sólido
-    dibujar_rect(x_p1_start + 150, y_fila1, 20, 20, 160, 160, 160); 
-    dibujar_texto("Muro", x_p1_start + 175, y_fila1 + 2, 255, 255, 255);
+   // ------------------------------------------------------------
+    // 4. DIBUJAR HUD
+    // ------------------------------------------------------------
+    int y_hud = filas * TILE_SIZE;
     
-    // Bala
-    dibujar_rect(x_p1_start + 290, y_fila1 + 5, 10, 10, 255, 255, 255); 
-    dibujar_texto("Bala", x_p1_start + 305, y_fila1 + 2, 255, 255, 255);
+    // Fondo gris oscuro
+    SDL_SetRenderDrawColor(renderizador, 20, 20, 20, 255);
+    SDL_Rect fondo_hud = {0, y_hud, ancho_total, ALTURA_LEYENDA};
+    SDL_RenderFillRect(renderizador, &fondo_hud);
     
-    // --- FILA 2: CONTADORES DE VIDA ---
-    int y_fila2 = y_leyenda_base + 35;
+    // CONFIGURACIÓN DE FILAS (Espaciado vertical)
+    int margen_sup = 15;
+    int y_fila1 = y_hud + margen_sup;
+    int y_fila2 = y_hud + margen_sup + 35;
+    int y_fila3 = y_hud + margen_sup + 70;
+
+    // COLUMNAS (Solo Izquierda y Derecha)
+    int x_col1 = 30;                 // Izquierda (Leyenda)
+    int x_col3 = ancho_total - 140;  // Derecha (Tanques)
     
-    // P1 Vidas (Amarillo)
-    char buf1[50];
-    sprintf(buf1, "P1 Vidas: %d", t1_vidas);
-    dibujar_rect(x_p1_start, y_fila2, 20, 20, 255, 200, 0); 
-    dibujar_texto(buf1, x_p1_start + 25, y_fila2 + 2, 255, 255, 100); 
+    // TAMAÑO PARA ICONOS DE LEYENDA (20x20)
+    int mini_size = 20;
 
-    // P2 Vidas (Verde)
-    char buf2[50];
-    sprintf(buf2, "P2 Vidas: %d", t2_vidas);
-    dibujar_rect(x_p2_start, y_fila2, 20, 20, 0, 150, 0); 
-    dibujar_texto(buf2, x_p2_start + 25, y_fila2 + 2, 100, 255, 100); 
+    // =========================================================
+    // FILA 1: LADRILLO (Izq) | TANQUE P1 (Der)
+    // =========================================================
     
-    // --- FILA 3: CONTROLES ---
-    int y_fila3 = y_leyenda_base + 65; 
-    int y_salto_controles = y_fila3 + 18;
+    // 1. Icono Ladrillo (Miniatura)
+    dibujar_rect(x_col1, y_fila1, mini_size, mini_size, 184, 100, 56);
+    dibujar_rect(x_col1+1, y_fila1+1, mini_size/2-2, mini_size/2-2, 216, 132, 88);
+    dibujar_rect(x_col1+mini_size/2+1, y_fila1+mini_size/2+1, mini_size/2-2, mini_size/2-2, 216, 132, 88);
     
-    // Controles P1 (Amarillo)
-    dibujar_texto("P1 Mov: FLECHAS (Continuo)", x_p1_start, y_fila3, 255, 255, 100);
-    dibujar_texto("Disparo: ESPACIO", x_p1_start, y_salto_controles, 255, 255, 100);
+    dibujar_texto("Muro", x_col1 + 30, y_fila1 + 4, 180, 180, 180);
 
-    // Controles P2 (Verde)
-    dibujar_texto("P2 Mov: W A S D (Continuo)", x_p2_start, y_fila3, 100, 255, 100);
-    dibujar_texto("Disparo: R-SHIFT", x_p2_start, y_salto_controles, 100, 255, 100);
+    // 2. Tanque P1 + Vidas
+    SDL_Rect rect_p1 = {x_col3, y_fila1 - 5, 30, 30}; 
+    SDL_RenderCopyEx(renderizador, textura_tanque_amarillo, NULL, &rect_p1, 0, NULL, SDL_FLIP_NONE);
+    
+    char txt_p1[20]; sprintf(txt_p1, "x %d", v1);
+    dibujar_texto(txt_p1, x_col3 + 40, y_fila1 + 4, 255, 255, 0);
 
-    // LÓGICA DE FIN DE JUEGO (Menú de Reinicio/Salida)
-    if (game_over) {
-        int centro_x = ancho_total / 2;
-        int centro_y = filas * TILE_SIZE / 2;
-        
-        const char *msg;
-        int r, g, b;
 
-        if (winner == 1) { 
-            msg = "JUGADOR 1 (AMARILLO) GANA!";
-            r = 255; g = 255; b = 100; 
-        } else { 
-            msg = "JUGADOR 2 (VERDE) GANA!";
-            r = 100; g = 255; b = 100; 
-        }
+    // =========================================================
+    // FILA 2: ACERO (Izq) | TANQUE P2 (Der)
+    // =========================================================
+    
+    // 1. Icono Acero (Miniatura)
+    dibujar_rect(x_col1, y_fila2, mini_size, mini_size, 160, 160, 160);
+    dibujar_rect(x_col1+4, y_fila2+4, mini_size-8, mini_size-8, 200, 200, 200);
+    
+    dibujar_texto("Acero", x_col1 + 30, y_fila2 + 4, 180, 180, 180);
 
+    // 2. Tanque P2 + Vidas
+    SDL_Rect rect_p2 = {x_col3, y_fila2 - 5, 30, 30}; 
+    SDL_RenderCopyEx(renderizador, textura_tanque_verde, NULL, &rect_p2, 0, NULL, SDL_FLIP_NONE);
+    
+    char txt_p2[20]; sprintf(txt_p2, "x %d", v2);
+    dibujar_texto(txt_p2, x_col3 + 40, y_fila2 + 4, 50, 255, 50);
+
+
+    // =========================================================
+    // FILA 3: ESCUDO/BASE (Izq)
+    // =========================================================
+
+    // 1. Icono Base (Miniatura)
+    dibujar_rect(x_col1, y_fila3, mini_size, mini_size, 0, 255, 255); 
+    dibujar_rect(x_col1+3, y_fila3+3, mini_size-6, mini_size-6, 0, 0, 0); 
+    
+    dibujar_texto("Escudo", x_col1 + 30, y_fila3 + 4, 0, 255, 255);
+    
+    dibujar_texto("[Q] Salir", (ancho_total/2)-20, y_fila3 + 4, 80, 80, 80);
+
+    // 5. GAME OVER OVERLAY
+    if (winner != 0) {
+        // Fondo oscuro
         SDL_SetRenderDrawBlendMode(renderizador, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 150);
-        SDL_Rect pantalla_completa = {0, 0, ancho_total, filas * TILE_SIZE};
-        SDL_RenderFillRect(renderizador, &pantalla_completa);
+        SDL_SetRenderDrawColor(renderizador, 0, 0, 0, 230);
+        SDL_Rect full = {0, 0, ancho_total, filas * TILE_SIZE + ALTURA_LEYENDA};
+        SDL_RenderFillRect(renderizador, &full);
         SDL_SetRenderDrawBlendMode(renderizador, SDL_BLENDMODE_NONE);
-        
-        dibujar_texto(msg, centro_x - 150, centro_y - 30, r, g, b);
-        dibujar_texto("Presiona ESPACIO para REINICIAR", centro_x - 150, centro_y + 10, 255, 255, 255);
-        dibujar_texto("Presiona ESC para SALIR", centro_x - 150, centro_y + 40, 255, 255, 255);
+
+        int cx = ancho_total / 2;     
+        int cy = (filas * TILE_SIZE) / 2; 
+
+        // 1. TÍTULO (Más arriba)
+        dibujar_texto_centrado(fuente_grande, "FIN DEL JUEGO", cx, cy - 80, 255, 0, 0);
+
+        // 2. GANADOR
+        char vic_msg[50];
+        if (winner == 1) sprintf(vic_msg, "GANADOR: JUGADOR 1");
+        else sprintf(vic_msg, "GANADOR: JUGADOR 2");
+        dibujar_texto_centrado(fuente_mediana, vic_msg, cx, cy - 40, 255, 255, 255);
+
+        // 3. ESTADÍSTICAS (Apiladas verticalmente para que quepan)
+        char p1_msg[50];
+        char p2_msg[50];
+        sprintf(p1_msg, "P1 (Amarillo): %d Vidas", v1);
+        sprintf(p2_msg, "P2 (Verde):    %d Vidas", v2);
+
+        // P1
+        dibujar_texto_centrado(fuente, p1_msg, cx, cy + 10, 255, 255, 0); // Amarillo
+        // P2 (Debajo de P1)
+        dibujar_texto_centrado(fuente, p2_msg, cx, cy + 30, 0, 255, 0);   // Verde
+
+        // 4. INSTRUCCIONES (Textos más cortos y separados)
+        dibujar_texto_centrado(fuente, "[ ESPACIO ]: Reiniciar", cx, cy + 70, 200, 200, 200);
+        dibujar_texto_centrado(fuente, "[ Q ]: Salir del Juego", cx, cy + 90, 200, 200, 200);
     }
-    
+
     SDL_RenderPresent(renderizador);
+}
+
+// Función auxiliar para reproducir audio desde la lógica
+void reproducir_efecto(int id) {
+    switch(id) {
+        case 1: if(sonido_disparo) Mix_PlayChannel(-1, sonido_disparo, 0); break;
+        case 2: if(sonido_pared) Mix_PlayChannel(-1, sonido_pared, 0); break;
+        case 3: if(sonido_muro) Mix_PlayChannel(-1, sonido_muro, 0); break;
+        case 4: if(sonido_tanque_hit) Mix_PlayChannel(-1, sonido_tanque_hit, 0); break;
+        case 5: if(sonido_final) Mix_PlayChannel(-1, sonido_final, 0); break;
+    }
 }
