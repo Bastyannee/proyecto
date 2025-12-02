@@ -15,7 +15,7 @@ Para Windows:
 3. Instale las librerías necesarias copiando y pegando este comando:
    --> pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_image mingw-w64-x86_64-SDL2_ttf mingw-w64-x86_64-SDL2_mixer.
 4. Luego de que estos comando hayan sido instalados exitosamente, puede abrir la terminal y ejecutar lo siguiente:
-   --> gcc -o mi_juego inter_comp2.c logica_v2.c -lmingw32 -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer
+   --> gcc -o mi_juego inter_comp2.c logica_v2.c -lmingw32 -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer (este comando tambien funciona para Linux)
    --> Despues:./mi_juego
    Se abrira una ventana respectivamemte donde podra interactuar con dicho programa.
    
