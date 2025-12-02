@@ -187,7 +187,6 @@ void visualizar_laberinto(int **matriz, int filas, int columnas, int v1, int v2,
                     dibujar_rect(x + 10, y + 10, TILE_SIZE - 20, TILE_SIZE - 20, 0, 255, 255); 
                     dibujar_rect(x + 12, y + 12, TILE_SIZE - 24, TILE_SIZE - 24, 0, 0, 0);
                     break;
-            
         }
     }
     
